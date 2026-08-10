@@ -1,0 +1,628 @@
+---
+title: "clustering analysis"
+author: "S Neupane"
+output: html_document
+---
+```{r}
+library(dplyr)
+library(patchwork)
+library(readr)
+library(Seurat)
+#library(SeuratData)
+library(SeuratObject)
+library(reshape2)
+library(ggplot2)
+library(tidyverse)
+library(readxl)
+library(ggmin)
+```
+
+```{r}
+setwd('~/Desktop/Paper submission_aug/Supplementary files/')
+eukaryotic_matrix_new <- read.table("SUPPLEMENTARY FILE 1 untransposed_eukaryotic matrix_new.csv",",", header=T, row.names = 1) ##read the file called "eukaryoti matrix.csv" This is a filtered binary matrix
+transposed_eukaryotes <- t(eukaryotic_matrix_new)
+dim(transposed_eukaryotes)
+```
+
+```{r}
+#This matrix has already been pre-processed to filter for non-eukaryotes, so a lot of incomplete genomes containing minimal Pfam domains have already been removed. Set all filters to 0
+seurat_euk <- CreateSeuratObject(counts = transposed_eukaryotes , project = "eukaryotes pfam analysis", min.cells = 0, min.features = 0)
+dim(seurat_euk) 
+```
+
+Note: All results were produced usin g the seurat v4 series, ScaleData(seurat_euk, features = all.genes)
+seurat v5 and above requires normalising before running scale data. Or c
+for V5 and above specify ScaleData(seurat_euk, features = all.genes, layer = "counts") 
+
+run the following line before before find variable features
+seurat_euk <- NormalizeData(seurat_euk) 
+```{r}
+seurat_euk <- FindVariableFeatures(seurat_euk, selection.method = "vst", nfeatures = 2000) #default - still captures all features as we have 1093 species
+all.genes <- rownames(seurat_euk)
+
+seurat_euk <- ScaleData(seurat_euk, features = all.genes, layer = "counts") ##for V5 and above, set layer ="counts" or Normalize before running scale data
+seurat_euk <- RunPCA(seurat_euk, features = VariableFeatures(object = seurat_euk))
+
+```
+
+```{r}
+
+DimPlot(seurat_euk, reduction = "pca") 
+
+```
+This displays the ranking of the PCs based on the percentage of variance explained by each PC. The elbow aorund 5-6 suggest that majority of the true
+signal is captured in the first 5/6 PC's but we used 15 PCs. 
+```{r}
+ElbowPlot(seurat_euk)
+```
+
+Find neighbours:  KNN graph based is created based on on the euclidean distance in PCA space. This KNN graph is used to compute SNN graph by calculating the neighborhood overlap (Jaccard index) between every cell and its nearest neighbors - used deafult values mostly.
+•	The strength of the connection (or edge weight) between two points in the SNN graph depends on the number of shared neighbours.
+•	More shared neighbours indicate a stronger relationship between the points.
+
+Find clusters: This is done using Louvian algorithm (check notes titled: lovian algorithm - this partitions the graphs into clusters)
+
+```{r}
+seurat_euk <- FindNeighbors(seurat_euk, dims = 1:15)
+seurat_euk <- FindClusters(seurat_euk, resolution = 1)  ##can adjust reoslution to adjust the number of clusters, adjsut to what is biologically meaningful to your data
+```
+
+UMAP: Used for visualisation of the data - can't make biological conclusions. 
+In particular, it aims to presentlocal distances in the dataset (i.e. ensuring that pfams with very similar presence/abscence patterns co-localize), but often do not preserve more global relationship
+
+```{r}
+seurat_euk <- RunUMAP(seurat_euk, dims = 1:15)
+```
+
+
+```{r}
+baseplot <- DimPlot(seurat_euk, reduction = "umap", label = TRUE)
+baseplot + ggmin::theme_powerpoint()
+```
+```{r}
+#get Pfams list from each of the clusters
+cluster0<- names(Idents(seurat_euk))[Idents(seurat_euk)==0]
+cluster1 <- names(Idents(seurat_euk))[Idents(seurat_euk)==1]
+cluster2 <- names(Idents(seurat_euk))[Idents(seurat_euk)==2]
+cluster3 <- names(Idents(seurat_euk))[Idents(seurat_euk)==3]
+cluster4 <- names(Idents(seurat_euk))[Idents(seurat_euk)==4]
+cluster5 <- names(Idents(seurat_euk))[Idents(seurat_euk)==5]
+cluster6 <- names(Idents(seurat_euk))[Idents(seurat_euk)==6]
+'''
+write.csv(cluster0, "run1_cluster0Pfams.csv") 
+write.csv(cluster1, "run1_cluster1Pfams.csv") 
+write.csv(cluster2, "run1_cluster2Pfams.csv") 
+write.csv(cluster3, "run1_cluster3Pfams.csv") 
+write.csv(cluster4, "run1_cluster4Pfams.csv") 
+write.csv(cluster5, "run1_cluster5Pfams.csv") 
+write.csv(cluster6, "run1_cluster6Pfams.csv") '''
+```
+
+
+
+```{r}
+ markers1 <- c('PF04712','PF05914','PF18383','PF18111','PF06098','PF07162','PF07289','PF09773','PF10211','PF10498','PF11069','PF11618','PF12317','PF14727','PF14728','PF14738','PF14769','PF14777','PF14779','PF14781','PF14782','PF14783','PF14858','PF14931','PF14935','PF15305','PF15383','PF15619','PF15625','PF15867','PF17664')
+##these are the 31 marker Pfams
+
+baseplot1 <-DimPlot(object = seurat_euk,cells.highlight = markers1,order = TRUE, pt.size = 0.1,sizes.highlight = 0.6, label = TRUE)+xlab("UMAP 1")+ylab("UMAP 2")+
+  scale_color_manual(values = c("grey", "red3"),
+                     labels = c("All Pfams",
+                                "Marker Pfams"))
+baseplot1+ggmin::theme_powerpoint()
+```
+
+```{r}
+##wwhere do the marker Pfams go
+Idents(seurat_euk)[markers1]
+```
+```{r}
+##obtain the cluster where majority (ALL, in this case) of the CMPs cluster
+#cluster3_euk<- names(Idents(seurat_euk_34))[Idents(seurat_euk_34)==3]
+Markerclustername1 <- names(which.max(table(Idents(seurat_euk)[markers1])))
+Markerclusternum1 <- names(Idents(seurat_euk))[Idents(seurat_euk) == Markerclustername1]
+length(Markerclusternum1)
+```
+
+
+Filter the matrix with only the Pfams contained in the Marker cluster 
+```{r}
+euk_run2 <- transposed_eukaryotes[,Markerclusternum1]
+dim(euk_run2)
+#write.csv(euk_run2, "filteredmatrix1.csv") 
+```
+
+##Repeat the analysis on the filtered matrix
+```{r}
+seurat_euk2 <- CreateSeuratObject(counts = euk_run2 , project = "eukaryotes pfam analysis", min.cells = 0, min.features = 0)
+dim(seurat_euk2)
+
+```
+
+
+Remember: seurat v5 and above requires nornalising before running scale data. Or specify #
+for V5 and above specify ScaleData(seurat_euk, features = all.genes, layer = "counts") 
+
+run the following line before before find variable features
+seurat_euk <- NormalizeData(seurat_euk) 
+```{r}
+seurat_euk2 <- FindVariableFeatures(seurat_euk2, selection.method = "vst", nfeatures = 2000)
+all.genes <- rownames(seurat_euk2)
+seurat_euk2 <- ScaleData(seurat_euk2, features = all.genes, layer = "counts")
+seurat_euk2 <- RunPCA(seurat_euk2, features = VariableFeatures(object = seurat_euk2))
+```
+
+```{r}
+
+DimPlot(seurat_euk2, reduction = "pca")
+```
+
+```{r}
+
+ElbowPlot(seurat_euk2)
+
+```
+
+```{r}
+seurat_euk2 <- FindNeighbors(seurat_euk2, dims = 1:15)
+seurat_euk2 <- FindClusters(seurat_euk2, resolution = 0.5) #resolution lowered from 1 to 0.5
+```
+
+```{r}
+
+seurat_euk2 <- RunUMAP(seurat_euk2, dims = 1:15)
+
+```
+
+```{r}
+DimPlot(seurat_euk2, reduction = "umap", label = TRUE)
+```
+Figure 2 B ii
+```{r}
+
+baseplot2 <-DimPlot(object = seurat_euk2,cells.highlight = markers1,order = TRUE, pt.size = 0.1,sizes.highlight = 0.6, label = TRUE)+xlab("UMAP 1")+ylab("UMAP 2")+
+  scale_color_manual(values = c("grey", "red3"),
+                     labels = c("All Pfams",
+                                "Marker Pfams"))
+baseplot2+ggmin::theme_powerpoint()
+```
+
+```{r}
+Idents(seurat_euk2)[markers1] ##All but 4 CMPs cluster into one group
+
+```
+```{r}
+##find the name of the cluster where most markers group to and obtian all the Pfams in that cluster
+Markerclustername2 <- names(which.max(table(Idents(seurat_euk2)[markers1])))
+Markerclusternum2 <- names(Idents(seurat_euk2))[Idents(seurat_euk2)==Markerclustername2]
+```
+
+```{r}
+#cluster3_euk2 <- names(Idents(seurat_euk2))[Idents(seurat_euk2)==4]
+euk_run3 <- transposed_eukaryotes[,Markerclusternum2]
+dim(euk_run3)
+```
+
+##NESTED ANALYSIS RUN 3 - REPEAT THE SAME STEPS ABOVE, RESOLUTION, DIMENSIONS ETC CAN BE CHANGED 
+
+```{r}
+seurat_euk3 <- CreateSeuratObject(counts = euk_run3 , project = "eukaryotes pfam analysis", min.cells = 0, min.features = 0)
+```
+
+```{r}
+seurat_euk3 <- FindVariableFeatures(seurat_euk3, selection.method = "vst", nfeatures = 2000)
+all.genes <- rownames(seurat_euk3)
+seurat_euk3 <- ScaleData(seurat_euk3, features = all.genes, layer = "counts")
+seurat_euk3 <- RunPCA(seurat_euk3, features = VariableFeatures(object = seurat_euk3))
+```
+
+```{r}
+
+DimPlot(seurat_euk3, reduction = "pca")
+
+```
+
+
+```{r}
+
+ElbowPlot(seurat_euk3)
+
+```
+```{r}
+
+seurat_euk3 <- FindNeighbors(seurat_euk3, dims = 1:15)
+seurat_euk3 <- FindClusters(seurat_euk3, resolution = 0.3) ###play witht he resolutions depending on 
+```
+```{r}
+
+seurat_euk3 <- RunUMAP(seurat_euk3, dims = 1:15)
+
+```
+```{r}
+DimPlot(seurat_euk3, reduction = "umap", label = TRUE)
+```
+
+Figure 2 B iii
+
+```{r}
+
+baseplot3 <-DimPlot(object = seurat_euk3,cells.highlight = markers1,order = TRUE, pt.size = 0.1,sizes.highlight = 0.6, label = TRUE)+xlab("UMAP 1")+ylab("UMAP 2")+
+  scale_color_manual(values = c("grey", "red3"),
+                     labels = c("All Pfams",
+                                "Marker Pfams"))
+baseplot3+ggmin::theme_powerpoint()
+```
+
+```{r}
+(Idents(seurat_euk3)[markers1])
+```
+Note: We could stop here but we  proceeded to continue till Pfams no longer clustered to one group
+
+```{r}
+##obtain the cluster where majority (ALL, in this case) of the CMPs cluster
+#cluster3_euk<- names(Idents(seurat_euk_34))[Idents(seurat_euk_34)==3]
+Markerclustername3 <- names(which.max(table(Idents(seurat_euk3)[markers1])))
+Markerclusternum3 <- names(Idents(seurat_euk3))[Idents(seurat_euk3)==Markerclustername3]
+Markerclusternum3
+```
+
+```{r}
+#cluster0_euk3 <- names(Idents(seurat_euk3))[Idents(seurat_euk3)==1]
+euk_run4 <- transposed_eukaryotes[,Markerclusternum3]
+dim(euk_run4)
+```
+
+
+```{r}
+seurat_euk4 <- CreateSeuratObject(counts = euk_run4 , project = "eukaryotes pfam analysis", min.cells = 0, min.features = 0)
+dim(seurat_euk4) ## we are left with all the species and 99 pfams
+
+```
+
+```{r}
+seurat_euk4 <- FindVariableFeatures(seurat_euk4, selection.method = "vst", nfeatures = 2000)
+all.genes <- rownames(seurat_euk4)
+seurat_euk4 <- ScaleData(seurat_euk4, features = all.genes, layer = "counts")
+seurat_euk4 <- RunPCA(seurat_euk4, features = VariableFeatures(object = seurat_euk4))
+```
+
+```{r}
+
+DimPlot(seurat_euk4, reduction = "pca")
+
+```
+
+
+```{r}
+
+ElbowPlot(seurat_euk4)
+
+```
+
+```{r}
+
+seurat_euk4 <- FindNeighbors(seurat_euk4, dims = 1:15)
+seurat_euk4 <- FindClusters(seurat_euk4, resolution = 0.5)
+
+```
+
+```{r}
+
+seurat_euk4 <- RunUMAP(seurat_euk4, dims = 1:15)
+
+```
+
+```{r}
+DimPlot(seurat_euk4, reduction = "umap", label = TRUE)
+```
+Figure 2 B iv 
+```{r}
+Idents(seurat_euk4)[markers1]
+baseplot4 <-DimPlot(object = seurat_euk4,cells.highlight = markers1,order = TRUE, pt.size = 1,sizes.highlight = 1, label = TRUE)+xlab("UMAP 1")+ylab("UMAP 2")+
+  scale_color_manual(values = c("grey", "red3"),
+                     labels = c("All Pfams",
+                                "Marker Pfams"))
+baseplot4+ggmin::theme_powerpoint()
+```
+Can write each of the individual cluster Pfams to csv
+```{r}
+euk_run4_0 <- names(Idents(seurat_euk4))[Idents(seurat_euk4)==0]
+euk_run4_1 <- names(Idents(seurat_euk4))[Idents(seurat_euk4)==1]
+euk_run4_2 <- names(Idents(seurat_euk4))[Idents(seurat_euk4)==2]
+##explore the Pfams in each of the clusters - write.csv(euk_run4_0, "cluster0Pfams.csv") and so on 
+```
+
+----- Perform any repeat analysis with other clusters of interest------
+```{r}
+##labelling each point - too crowded will do manually
+df <- as.data.frame(Embeddings(seurat_euk4, "umap"))
+df$cell_id <- rownames(df)
+
+# Plot with text
+#DimPlot(seurat_euk4, reduction = "umap",pt.size = 12,cells.highlight = markers1,sizes.highlight = 12) + 
+  #geom_text_repel(data = df, aes(x = umap_1, y = umap_2, label = cell_id), size = 4)+scale_color_manual(values = c("grey", "lightblue"),
+                     labels = c("All Pfams",
+                                "Marker Pfams"))
+```
+
+
+Mitochondrial Oxphos and ribosomal Pfams
+
+```{r}
+ribosomal_pfams <- c('PF00163','PF00164','PF00177','PF00181','PF00189','PF00203','PF00237','PF00238','PF00252','PF00253','PF00276','PF00281','PF00297','PF00298','PF00312','PF00318','PF00327','PF00333','PF00338','PF00347','PF00366','PF00380','PF00410','PF00411','PF00416','PF00428','PF00444','PF00453','PF00466','PF00468','PF00471','PF00542','PF00572','PF00573','PF00687','PF00828','PF00886','PF00935','PF01084','PF01090','PF01092','PF01157','PF01158','PF01159','PF01165','PF01196','PF01197','PF01198','PF01199','PF01200')
+
+MC_oxphos <- c('PF00146','PF00361','PF06444','PF00115','PF02790','PF00116','PF00895','PF00119','PF00510','PF00507','PF00420','PF00361','PF01059','PF00361','PF00662','PF06455','PF00499','PF00032','PF00033')
+```
+
+
+
+```{r}
+baseplot_mrc <-DimPlot(object = seurat_euk, cells.highlight = list(markers1, ribosomal_pfams, MC_oxphos), order = TRUE, pt.size = 0.3,sizes.highlight = 0.3, label = TRUE)+xlab("UMAP 1")+ylab("UMAP 2")+
+  scale_color_manual(values = c("grey", "cornflowerblue","orange", "red3"),
+                    labels = c("All Pfams", "Mitochondria_ATP_generation Pfams","Ribosomal Pfams", "Ciliary Pfams"))
+baseplot_mrc+ggmin::theme_powerpoint()
+
+```
+
+```{r}
+mitoclustername1 <- names(which.max(table(Idents(seurat_euk)[MC_oxphos])))
+mitoclusternum1 <- names(Idents(seurat_euk))[Idents(seurat_euk) == mitoclustername1]
+length(mitoclusternum1)
+```
+
+```{r}
+run2_MITO_RIB <- transposed_eukaryotes[,mitoclusternum1]
+dim(run2_MITO_RIB)
+```
+
+```{r}
+run2_MITO_RIB <- CreateSeuratObject(counts = run2_MITO_RIB , project = "eukaryotes pfam analysis", min.cells = 0, min.features = 0)
+dim(run2_MITO_RIB)
+```
+
+```{r}
+run2_MITO_RIB <- FindVariableFeatures(run2_MITO_RIB, selection.method = "vst", nfeatures = 2000)
+all.genes <- rownames(run2_MITO_RIB)
+run2_MITO_RIB <- ScaleData(run2_MITO_RIB, features = all.genes, layer = "counts")
+run2_MITO_RIB <- RunPCA(run2_MITO_RIB, features = VariableFeatures(object = run2_MITO_RIB))
+```
+
+```{r}
+
+DimPlot(run2_MITO_RIB, reduction = "pca")
+```
+
+```{r}
+run2_MITO_RIB <- FindNeighbors(run2_MITO_RIB, dims = 1:15)
+run2_MITO_RIB <- FindClusters(run2_MITO_RIB, resolution = 0.3) #resolution lowered from 1 to 0.5
+```
+
+```{r}
+
+run2_MITO_RIB <- RunUMAP(run2_MITO_RIB, dims = 1:15)
+
+```
+
+
+```{r}
+DimPlot(run2_MITO_RIB, reduction = "umap", label = TRUE)
+```
+Supplementary figure 1 D
+```{r}
+baseplot_R2 <-DimPlot(object = run2_MITO_RIB,cells.highlight = list(markers1, ribosomal_pfams, MC_oxphos), order = TRUE, pt.size = 0.5,sizes.highlight = 0.5, label = TRUE)+xlab("UMAP 1")+ylab("UMAP 2")+
+  scale_color_manual(values = c("grey", "cornflowerblue","orange", "red3"),
+                    labels = c("All Pfams", "MC_ATP_generation Pfams","Ribosomal Pfams", "Ciliary Pfams"))
+baseplot_R2+ggmin::theme_powerpoint()
+```
+
+
+```{r}
+Idents(run2_MITO_RIB)[MC_oxphos]
+```
+
+
+```{r}
+##obtain the cluster where majority (ALL, in this case) of the CMPs cluster
+#cluster3_euk<- names(Idents(seurat_euk_34))[Idents(seurat_euk_34)==3]
+riboclustername2 <- names(which.max(table(Idents(run2_MITO_RIB)[ribosomal_pfams])))
+riboclusternum2 <- names(Idents(run2_MITO_RIB))[Idents(run2_MITO_RIB) == riboclustername2]
+length(riboclusternum2)
+```
+
+```{r}
+run3_RIBO <- transposed_eukaryotes[,riboclusternum2]
+dim(run3_RIBO)
+#write.csv(euk_run2, "filteredmatrix1.csv") 
+```
+
+```{r}
+run3_RIBO <- CreateSeuratObject(counts = run3_RIBO , project = "ribo_Pfams", min.cells = 0, min.features = 0)
+```
+
+```{r}
+run3_RIBO <- FindVariableFeatures(run3_RIBO, selection.method = "vst", nfeatures = 2000)
+all.genes <- rownames(run3_RIBO)
+run3_RIBO <- ScaleData(run3_RIBO, features = all.genes, layer = "counts")
+run3_RIBO <- RunPCA(run3_RIBO, features = VariableFeatures(object = run3_RIBO))
+```
+
+```{r}
+
+DimPlot(run3_RIBO, reduction = "pca")
+```
+
+```{r}
+run3_RIBO <- FindNeighbors(run3_RIBO, dims = 1:15)
+run3_RIBO <- FindClusters(run3_RIBO, resolution = 0.2) #resolution lowered from 1 to 0.5
+```
+
+```{r}
+
+run3_RIBO <- RunUMAP(run3_RIBO, dims = 1:15)
+
+```
+
+```{r}
+DimPlot(run3_RIBO, reduction = "umap", label = TRUE)
+```
+
+Supplementary figure 1D ii
+```{r}
+baseplot_R3 <-DimPlot(object = run3_RIBO,cells.highlight = list(markers1, ribosomal_pfams), order = TRUE, pt.size = 0.5,sizes.highlight = 0.5, label = TRUE)+xlab("UMAP 1")+ylab("UMAP 2")+
+  scale_color_manual(values = c("grey","orange"),
+                    labels = c("All Pfams", "Ribosomal Pfams"))
+baseplot_R3+ggmin::theme_powerpoint()
+```
+
+```{r}
+##Pfams in cluster 0, 1 and 2
+run3_RIBO_c0 <- names(Idents(run3_RIBO))[Idents(run3_RIBO) == 0]
+run3_RIBO_c1 <- names(Idents(run3_RIBO))[Idents(run3_RIBO) == 1]
+run3_RIBO_c2 <- names(Idents(run3_RIBO))[Idents(run3_RIBO) == 2]
+
+
+Human_genes_Pfams <- read_excel("human_genes_ensemble.xlsx")
+
+##which genes contain these Pfams
+#cluster 0 genes
+ribo_cluster0_genes <- Human_genes_Pfams %>%
+  filter(str_detect(`Pfam ID`, paste(run3_RIBO_c0, collapse = "|"))) %>%
+  pull(`Gene name`) %>%
+  unique()
+#cluster 1 genes
+ribo_cluster1_genes <- Human_genes_Pfams %>%
+  filter(str_detect(`Pfam ID`, paste(run3_RIBO_c1, collapse = "|"))) %>%
+  pull(`Gene name`) %>%
+  unique()
+
+
+ribo_cluster2_genes <- Human_genes_Pfams %>%
+  filter(str_detect(`Pfam ID`, paste(run3_RIBO_c2, collapse = "|"))) %>%
+  pull(`Gene name`) %>%
+  unique()
+
+ribo_run3_genes<- c(ribo_cluster0_genes,ribo_cluster1_genes,ribo_cluster2_genes)
+```
+Enrich R to see what is enriched per cluster and then overall in the Ribosomal cluster
+```{r}
+library(enrichR)
+library(enrichplot)
+
+ribo_cluster0_genes <- enrichr(ribo_cluster0_genes, databases = "WikiPathways_2019_Human")
+plotEnrich(ribo_cluster0_genes[["WikiPathways_2019_Human"]], 
+           showTerms = 7, 
+           numChar = 100, 
+           y = "Count")
+
+ribo_cluster1_genes <- enrichr(ribo_cluster1_genes, databases = "WikiPathways_2019_Human")
+plotEnrich(ribo_cluster1_genes[["WikiPathways_2019_Human"]], 
+           showTerms = 7, 
+           numChar = 100, 
+           y = "Count")
+
+ribo_cluster2_genes <- enrichr(ribo_cluster2_genes, databases = "WikiPathways_2019_Human")
+plotEnrich(ribo_cluster2_genes[["WikiPathways_2019_Human"]], 
+           showTerms = 7, 
+           numChar = 100, 
+           y = "Count")
+
+
+all_ribo_run3_genes <- enrichr(ribo_run3_genes, databases = "WikiPathways_2019_Human")
+plotEnrich(all_ribo_run3_genes[["WikiPathways_2019_Human"]], 
+           showTerms = 7, 
+           numChar = 100, 
+           y = "Count")+theme(text = element_text(size = 16))
+```
+
+
+Same for the Mitochondrial cluster
+
+``{r}
+##obtain the cluster where majority (ALL, in this case) of the CMPs cluster
+#cluster3_euk<- names(Idents(seurat_euk_34))[Idents(seurat_euk_34)==3]
+```{r}
+mitoclusternum2 <- names(which.max(table(Idents(run2_MITO_RIB)[MC_oxphos])))
+mitoclustername2 <- names(Idents(run2_MITO_RIB))[Idents(run2_MITO_RIB) == mitoclusternum2]
+length(mitoclustername2)
+```
+
+
+```{r}
+run3_MC <- transposed_eukaryotes[,mitoclustername2]
+dim(run3_MC)
+#write.csv(euk_run2, "filteredmatrix1.csv") 
+```
+```{r}
+run3_MC <- CreateSeuratObject(counts = run3_MC , project = "MC_Oxphos_Pfams", min.cells = 0, min.features = 0)
+dim(run3_MC)
+
+```
+
+```{r}
+run3_MC <- FindVariableFeatures(run3_MC, selection.method = "vst", nfeatures = 2000)
+all.genes <- rownames(run3_MC)
+run3_MC <- ScaleData(run3_MC, features = all.genes, layer = "counts")
+run3_MC <- RunPCA(run3_MC, features = VariableFeatures(object = run3_RIBO))
+```
+
+```{r}
+
+DimPlot(run3_MC, reduction = "pca")
+```
+
+```{r}
+run3_MC <- FindNeighbors(run3_MC, dims = 1:15)
+run3_MC <- FindClusters(run3_MC, resolution = 0.2) #resolution lowered from 1 to 0.5
+```
+
+```{r}
+
+run3_MC <- RunUMAP(run3_MC, dims = 1:15)
+```
+
+```{r}
+DimPlot(run3_MC, reduction = "umap", label = TRUE)
+```
+```{r}
+baseplot_R3 <-DimPlot(object = run3_MC,cells.highlight = MC_oxphos, order = TRUE, pt.size = 0.8,sizes.highlight = 0.8, label = TRUE)+xlab("UMAP 1")+ylab("UMAP 2")+
+  scale_color_manual(values = c("grey","cornflowerblue", "red3"),
+                    labels = c("All Pfams", "MC_oxphos Pfams", "Ciliary Pfams"))
+baseplot_R3+ggmin::theme_powerpoint()
+
+```
+```{r}
+MitoCluster3Pfams <- mitoclustername2
+#View(Human_genes_Pfams)
+Human_genes_Pfams <- Human_genes_Pfams %>% select(`Gene name`, `Pfam ID`)
+```
+Supplementary figure 1 G
+```{r}
+MT_cluster3_genes <- Human_genes_Pfams %>%
+ filter(str_detect(`Pfam ID`, paste(MitoCluster3Pfams, collapse = "|"))) %>%
+  pull(`Gene name`) %>%
+  unique()
+enriched_MC <- enrichr(MT_cluster3_genes, databases = "WikiPathways_2019_Human")
+plotEnrich(enriched_MC[["WikiPathways_2019_Human"]], 
+           showTerms = 7, 
+           numChar = 100, 
+           y = "Count")+theme(text = element_text(size = 14))
+
+```
+
+
+
+
+How are the Pfams clustered? i.e. what species contribute to the Pfam distribution - Figure 2 A I
+```{r}
+species <- c('X9606','X559292','X6239','X44689','X3702','X3055','X312017','X36329','X35128','X185431','X684364')
+FeaturePlot(seurat_euk,species, label = TRUE)
+```
+
+
+
+
+
+
+
+
+
+
